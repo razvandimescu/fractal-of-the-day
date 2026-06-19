@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+
+# generated outputs (curated images live in gallery/, which is tracked)
+/day_*.png
+evolution/*.png
+
+# third-party reference image (drop your own to enable reference palettes)
+/reference.png
+
+.python-version
+.DS_Store

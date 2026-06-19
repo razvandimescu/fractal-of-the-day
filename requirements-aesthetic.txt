@@ -1,0 +1,4 @@
+# optional: enables `daily.py --aesthetic` (LAION CLIP+MLP scorer)
+torch>=2.2
+transformers>=4.40
+simple-aesthetics-predictor>=0.1.2
