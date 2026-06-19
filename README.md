@@ -65,10 +65,28 @@ Drop any image as `reference.png` to let the `reference` palette source sample i
 Without it, the engine uses cosine palettes (graceful fallback). The reference image is
 **not** committed.
 
+## Interactive site
+
+The project's superpower is determinism: every image is a pure function of a date and a
+handful of numbers. The `docs/` site leans into that instead of being a static gallery —
+it shows each day's image **beside its recipe**, a **live cosine-palette tuner** (the exact
+`a + b·cos(2π(c·t + d))` formula the engine uses), and a **same-seed comparator** across the
+two styles and two palette sources.
+
+```bash
+python build_site.py            # render today + the 4 comparator corners into docs/
+cd docs && python3 -m http.server 8000   # then open http://localhost:8000
+```
+
+`build_site.py` emits `docs/img/*.png` + `docs/data/*.json`; `docs/index.html` is static and
+reads them. Designed to be served by GitHub Pages from `/docs`.
+
 ## Layout
 
 ```
 daily.py                 the engine (styles, palettes, scorer, overlay, orchestration)
+build_site.py            renders the site assets (today + comparator corners) into docs/
+docs/                    interactive site: index.html + img/ + data/
 FINDINGS.md              research synthesis + decisions + roadmap
 gallery/                 curated sample outputs
 evolution/               earlier prototypes (flame/Julia/Newton, then the v2 flow core)

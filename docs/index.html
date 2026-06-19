@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>fractal of the day</title>
+<meta name="description" content="A deterministic generative-art engine. One image per day, fully described by a date and a handful of numbers." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#09090c; --bg2:#0f0e14; --panel:rgba(255,255,255,.025);
+  --ink:#ECE7DE; --muted:#8b867e; --faint:#56524d;
+  --accent:#E8A33D; --accent2:#7E8BDE; --line:rgba(236,231,222,.10);
+  --display:'Space Grotesk',sans-serif; --sans:'DM Sans',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  -webkit-font-smoothing:antialiased; line-height:1.55; overflow-x:hidden;
+}
+.kicker,.sec-n,.row,.abcd,.cap,.srow label,.srow output,.recipe .v,
+button,.btn,.seg button,footer,#today-cap,#comp-cap{font-family:var(--mono)}
+/* atmospheric depth */
+body::before{
+  content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(60vw 60vw at 12% -8%, rgba(232,163,61,.10), transparent 60%),
+    radial-gradient(55vw 55vw at 105% 110%, rgba(126,139,222,.12), transparent 60%),
+    var(--bg);
+}
+body::after{ /* grain */
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.04;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.wrap{max-width:1140px; margin:0 auto; padding:0 28px}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ---- masthead ---- */
+header{padding:64px 0 30px; border-bottom:1px solid var(--line)}
+.kicker{font-size:12px; letter-spacing:.34em; text-transform:uppercase; color:var(--muted)}
+h1{
+  font-family:var(--display); font-weight:600; font-size:clamp(44px,9vw,100px);
+  line-height:.92; letter-spacing:-.035em; margin:.18em 0 .1em;
+}
+h1 em{font-style:normal; font-weight:400; color:var(--accent)}
+.tag{color:var(--muted); max-width:46ch; font-size:14px}
+
+/* ---- section frame ---- */
+section{padding:62px 0; border-bottom:1px solid var(--line)}
+.sec-h{display:flex; align-items:baseline; gap:16px; margin-bottom:26px}
+.sec-n{font-size:12px; color:var(--accent); letter-spacing:.2em}
+.sec-t{font-family:var(--display); font-size:clamp(22px,3.4vw,32px); font-weight:600; letter-spacing:-.01em}
+.sec-d{color:var(--muted); font-size:13px; margin-left:auto; max-width:40ch; text-align:right}
+@media(max-width:680px){.sec-d{display:none}}
+
+/* ---- hero ---- */
+.hero{display:grid; grid-template-columns:1.25fr .9fr; gap:40px; align-items:start}
+@media(max-width:820px){.hero{grid-template-columns:1fr; gap:26px}}
+.frame{position:relative; border:1px solid var(--line); background:#000; aspect-ratio:1; overflow:hidden}
+.frame img{width:100%; height:100%; display:block; object-fit:cover}
+.frame .cap{position:absolute; left:12px; bottom:10px; font-size:11px; color:var(--muted);
+  letter-spacing:.12em; text-transform:uppercase; mix-blend-mode:difference}
+
+.recipe{display:flex; flex-direction:column; gap:2px}
+.rdate{font-family:var(--display); font-size:30px; font-weight:600; letter-spacing:-.01em; margin-bottom:6px}
+.row{display:flex; justify-content:space-between; gap:14px; padding:9px 0; border-bottom:1px dotted var(--line); font-size:13px}
+.row .k{color:var(--muted)}
+.row .v{text-align:right}
+.swatch-strip{height:34px; border:1px solid var(--line); margin:16px 0 6px; border-radius:2px}
+.abcd{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px; color:var(--muted)}
+.abcd b{color:var(--ink); font-weight:400}
+.btns{display:flex; gap:10px; margin-top:20px; flex-wrap:wrap}
+button,.btn{
+  font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink);
+  background:var(--panel); border:1px solid var(--line); padding:9px 15px; cursor:pointer;
+  text-transform:uppercase; transition:.18s; border-radius:2px;
+}
+button:hover,.btn:hover{border-color:var(--accent); color:var(--accent)}
+
+/* ---- tuner ---- */
+.tuner-canvas-wrap{position:relative; border:1px solid var(--line); border-radius:2px; overflow:hidden}
+#tuner{display:block; width:100%; height:120px; image-rendering:auto}
+.sliders{display:grid; grid-template-columns:repeat(2,1fr); gap:26px 44px; margin-top:26px}
+@media(max-width:680px){.sliders{grid-template-columns:1fr}}
+.pgroup .ph{display:flex; justify-content:space-between; font-size:12px; margin-bottom:10px; color:var(--ink)}
+.pgroup .ph span{color:var(--muted)}
+.srow{display:grid; grid-template-columns:14px 1fr 46px; gap:10px; align-items:center; margin:7px 0}
+.srow label{font-size:11px; color:var(--faint)}
+.srow output{font-size:11px; color:var(--muted); text-align:right}
+input[type=range]{-webkit-appearance:none; appearance:none; height:3px; background:var(--line); border-radius:3px; outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+  background:var(--accent); cursor:pointer; border:2px solid var(--bg)}
+input[type=range]::-moz-range-thumb{width:13px; height:13px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--bg)}
+.rch{color:#e0746b} .gch{color:#7bbf86} .bch{color:#6f9fe0}
+
+/* ---- comparator ---- */
+.comp{display:grid; grid-template-columns:1fr .8fr; gap:40px; align-items:center}
+@media(max-width:820px){.comp{grid-template-columns:1fr}}
+.toggle-block{margin-bottom:26px}
+.toggle-block .lbl{font-size:12px; color:var(--muted); margin-bottom:10px; letter-spacing:.14em; text-transform:uppercase}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:2px; overflow:hidden}
+.seg button{border:0; border-right:1px solid var(--line); margin:0; border-radius:0; min-width:120px}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent); color:#000}
+.seg button.on:hover{color:#000}
+.comp-note{color:var(--muted); font-size:13px; margin-top:18px; max-width:42ch}
+.comp-note b{color:var(--accent2); font-weight:400}
+
+/* ---- how / footer ---- */
+.how{columns:2; column-gap:48px; color:var(--muted); font-size:14px}
+@media(max-width:680px){.how{columns:1}}
+.how p{margin:0 0 14px; break-inside:avoid}
+.how b{color:var(--ink); font-weight:400}
+footer{padding:46px 0 80px; color:var(--faint); font-size:12px; display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap}
+footer a{color:var(--muted)}
+
+.toast{position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--accent); color:#000; padding:10px 18px; font-size:12px; letter-spacing:.08em;
+  text-transform:uppercase; border-radius:2px; opacity:0; transition:.25s; pointer-events:none}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+/* load motion */
+.rise{opacity:0; transform:translateY(14px); animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes rise{to{opacity:1; transform:none}}
+.d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.25s}.d4{animation-delay:.35s}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="kicker rise d1">deterministic generative art</div>
+    <h1 class="rise d2">fractal <em>of the</em> day</h1>
+    <p class="tag rise d3">One image per calendar day — and nothing is stored. Each piece is a pure
+    function of its date: a seed plus a handful of numbers. Same day, same art, forever. Turn the knobs below.</p>
+  </header>
+
+  <!-- 01 — TODAY -->
+  <section>
+    <div class="sec-h"><span class="sec-n">01</span><span class="sec-t">Today &amp; its recipe</span>
+      <span class="sec-d">The image on the left is fully described by the numbers on the right.</span></div>
+    <div class="hero">
+      <div class="frame rise d2"><img id="today-img" alt="today's fractal"><span class="cap" id="today-cap"></span></div>
+      <div class="recipe rise d3" id="recipe"><div class="row"><span class="k">loading…</span></div></div>
+    </div>
+  </section>
+
+  <!-- 02 — TUNER -->
+  <section>
+    <div class="sec-h"><span class="sec-n">02</span><span class="sec-t">Cosine palette tuner</span>
+      <span class="sec-d">color(t) = a + b·cos(2π(c·t + d)) — the exact formula the engine uses, live.</span></div>
+    <div class="tuner-canvas-wrap rise d2"><canvas id="tuner" width="1100" height="120"></canvas></div>
+    <div class="sliders" id="sliders"></div>
+    <div class="btns">
+      <button id="t-load">Load today's palette</button>
+      <button id="t-rand">Randomize</button>
+      <button id="t-copy">Copy params</button>
+      <button id="t-link">Copy permalink</button>
+    </div>
+  </section>
+
+  <!-- 03 — COMPARATOR -->
+  <section>
+    <div class="sec-h"><span class="sec-n">03</span><span class="sec-t">Same seed, four worlds</span>
+      <span class="sec-d">Determinism makes this an honest experiment — only the toggled axis changes.</span></div>
+    <div class="comp">
+      <div class="frame rise d2"><img id="comp-img" alt="comparator"><span class="cap" id="comp-cap"></span></div>
+      <div class="rise d3">
+        <div class="toggle-block">
+          <div class="lbl">Composition</div>
+          <div class="seg" id="seg-comp">
+            <button data-v="marble" class="on">marble</button><button data-v="focal">focal</button>
+          </div>
+        </div>
+        <div class="toggle-block">
+          <div class="lbl">Palette source</div>
+          <div class="seg" id="seg-pal">
+            <button data-v="cosine" class="on">cosine</button><button data-v="reference">reference</button>
+          </div>
+        </div>
+        <p class="comp-note">Every panel grows from the <b>same date seed</b>. Switching
+        <b>marble → focal</b> changes only the flow composition; <b>cosine → reference</b>
+        changes only where colour comes from. Nothing else moves.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 — HOW -->
+  <section>
+    <div class="sec-h"><span class="sec-n">04</span><span class="sec-t">How a day is made</span></div>
+    <div class="how rise d2">
+      <p><b>Flow + warp.</b> Particles advect through a domain-warped value-noise field, drawn as
+      glowing ribbons with log-density tone mapping — the source of the "designed chaos."</p>
+      <p><b>Palette.</b> Either a cosine palette (the formula in §02) or colours sampled from a
+      reference image, assigned with spatial clumping.</p>
+      <p><b>Composition.</b> The date seed picks <b>marble</b> (edge-to-edge) or <b>focal</b>
+      (a radial explosion with negative space), then a depth-layered overlay adds rings, dots and diamonds.</p>
+      <p><b>Selection.</b> The engine renders many candidates and keeps the best, judged by a free
+      heuristic or an optional learned aesthetic model. The winner becomes the day.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>fractal-of-the-day · pure-CPU · reproducible per date</span>
+    <span>technique: <a href="https://iquilezles.org">Quilez</a> · <a href="https://www.tylerxhobbs.com">Hobbs</a> · <a href="https://github.com/scottdraves/flam3">flam3</a></span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._);t._=setTimeout(()=>t.classList.remove('show'),1400);}
+function copy(txt,msg){navigator.clipboard.writeText(txt).then(()=>toast(msg||'copied'));}
+
+/* ---- cosine palette (mirror of cosine_palette in daily.py) ---- */
+function cosine(t,p){return [0,1,2].map(i=>clamp(p.a[i]+p.b[i]*Math.cos(2*Math.PI*(p.c[i]*t+p.d[i])),0,1));}
+function rgb(c){return `rgb(${(c[0]*255)|0},${(c[1]*255)|0},${(c[2]*255)|0})`;}
+function paintStrip(cv,p){const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  for(let x=0;x<W;x++){ctx.fillStyle=rgb(cosine(x/(W-1),p));ctx.fillRect(x,0,1,H);}}
+
+/* ---- tuner state ---- */
+const META={a:['bias','brightness'],b:['amp','contrast'],c:['freq','cycles'],d:['phase','hue shift']};
+let P={a:[.5,.5,.5],b:[.5,.5,.5],c:[1,1,1],d:[0,.33,.67]};
+const RANGE={a:[0,1],b:[0,1],c:[0,2],d:[0,1]};
+const tcv=$('#tuner');
+
+function buildSliders(){
+  const host=$('#sliders'); host.innerHTML='';
+  for(const key of ['a','b','c','d']){
+    const g=document.createElement('div'); g.className='pgroup';
+    g.innerHTML=`<div class="ph"><b>${key}</b><span>${META[key][0]} · ${META[key][1]}</span></div>`;
+    ['r','g','b'].forEach((ch,i)=>{
+      const [lo,hi]=RANGE[key];
+      const row=document.createElement('div'); row.className='srow';
+      row.innerHTML=`<label class="${ch}ch">${ch}</label>
+        <input type="range" min="${lo}" max="${hi}" step="0.001" value="${P[key][i]}" data-k="${key}" data-i="${i}">
+        <output>${P[key][i].toFixed(2)}</output>`;
+      const inp=row.querySelector('input'), out=row.querySelector('output');
+      inp.addEventListener('input',()=>{P[key][i]=+inp.value; out.textContent=(+inp.value).toFixed(2); render(); });
+      g.appendChild(row);
+    });
+    host.appendChild(g);
+  }
+}
+function syncSliders(){document.querySelectorAll('#sliders input').forEach(inp=>{
+  const v=P[inp.dataset.k][+inp.dataset.i]; inp.value=v; inp.nextElementSibling.textContent=v.toFixed(2);});}
+function render(){paintStrip(tcv,P); writeHash();}
+
+/* permalink: pack a,b,c,d into the hash */
+function writeHash(){const f=n=>(+n).toFixed(3);
+  location.replace('#t='+['a','b','c','d'].map(k=>P[k].map(f).join(',')).join('|'));}
+function readHash(){const m=location.hash.match(/t=([^&]+)/); if(!m)return false;
+  const parts=m[1].split('|'); if(parts.length!==4)return false;
+  ['a','b','c','d'].forEach((k,j)=>P[k]=parts[j].split(',').map(Number)); return true;}
+
+/* ---- load data ---- */
+fetch('data/today.json').then(r=>r.json()).then(d=>{
+  $('#today-img').src='img/today.png';
+  $('#today-cap').textContent=d.style;
+  const pal=d.palette, isC=pal.type==='cosine';
+  let abcd='';
+  if(isC){const fmt=a=>a.map(x=>x.toFixed(2)).join(' ');
+    abcd=`<div class="swatch-strip"><canvas id="rstrip" width="600" height="34" style="width:100%;height:100%"></canvas></div>
+      <div class="abcd">
+      <span>a</span><b>${fmt(pal.a)}</b><span>b</span><b>${fmt(pal.b)}</b>
+      <span>c</span><b>${fmt(pal.c)}</b><span>d</span><b>${fmt(pal.d)}</b></div>`;
+  }
+  $('#recipe').innerHTML=`
+    <div class="rdate">${d.date}</div>
+    <div class="row"><span class="k">seed</span><span class="v">${d.seed}</span></div>
+    <div class="row"><span class="k">composition</span><span class="v">${d.composition}</span></div>
+    <div class="row"><span class="k">palette</span><span class="v">${pal.type}</span></div>
+    <div class="row"><span class="k">elements</span><span class="v">${d.elements?'on':'off'}</span></div>
+    <div class="row"><span class="k">scorer</span><span class="v">${d.scorer}</span></div>
+    <div class="row"><span class="k">candidates</span><span class="v">${d.candidates}</span></div>
+    <div class="row"><span class="k">winning score</span><span class="v">${d.score}</span></div>
+    ${abcd}
+    <div class="btns">
+      <a class="btn" href="img/today.png" download="fractal-${d.date}.png">Download image</a>
+      <button id="r-copy">Copy recipe</button>
+    </div>`;
+  if(isC) paintStrip($('#rstrip'),pal);
+  $('#r-copy').addEventListener('click',()=>copy(JSON.stringify(d,null,2),'recipe copied'));
+  window._today=d;
+}).catch(()=>{$('#recipe').innerHTML='<div class="row"><span class="k">Run build_site.py and serve doc/ over http.</span></div>';});
+
+/* comparator */
+let comp={comp:'marble',pal:'cosine'}, CORNERS={};
+fetch('data/corners.json').then(r=>r.json()).then(c=>{CORNERS=c; updateComp();}).catch(()=>{});
+function updateComp(){const key=`${comp.comp}/${comp.pal}`; const e=CORNERS[key]; if(!e)return;
+  $('#comp-img').src=e.img; $('#comp-cap').textContent=key;}
+function wireSeg(id,field){$(id).addEventListener('click',ev=>{const b=ev.target.closest('button'); if(!b)return;
+  $(id).querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  comp[field]=b.dataset.v; updateComp();});}
+wireSeg('#seg-comp','comp'); wireSeg('#seg-pal','pal');
+
+/* tuner buttons */
+$('#t-load').addEventListener('click',()=>{const d=window._today;
+  if(!d||d.palette.type!=='cosine'){toast("today isn't a cosine palette");return;}
+  P={a:[...d.palette.a],b:[...d.palette.b],c:[...d.palette.c],d:[...d.palette.d]}; syncSliders(); render(); toast('loaded today');});
+$('#t-rand').addEventListener('click',()=>{const r=(lo,hi)=>+(lo+Math.random()*(hi-lo)).toFixed(3);
+  P={a:[r(.4,.6),r(.4,.6),r(.4,.6)],b:[r(.3,.5),r(.3,.5),r(.3,.5)],c:[r(.5,1.3),r(.5,1.3),r(.5,1.3)],d:[r(0,1),r(0,1),r(0,1)]};
+  syncSliders(); render();});
+$('#t-copy').addEventListener('click',()=>copy(JSON.stringify(P,null,2),'params copied'));
+$('#t-link').addEventListener('click',()=>copy(location.href,'permalink copied'));
+
+/* init */
+if(readHash()) {/* hash wins */}
+buildSliders(); render();
+</script>
+</body>
+</html>

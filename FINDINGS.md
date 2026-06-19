@@ -152,6 +152,12 @@ All free, CPU, deterministic per date.
   Default pipeline stays heuristic-only and dependency-free; learned model is opt-in.
 - LAION SRCC ~0.61 — better-than-random taste, not human-level. Worth it here because
   one good pick/day matters and the cost is amortised over a daily cadence.
+- [x] Interactive site MVP (`build_site.py` + `docs/`): exploits determinism instead of a
+      static gallery — daily image + its recipe, a live cosine-palette tuner (the actual
+      formula, client-side), a same-seed style/palette comparator, permalink/export.
+      Reviewed via the "Unreasonable Effectiveness of HTML" lens (show-don't-describe).
+      Fonts: Space Grotesk / DM Sans / JetBrains Mono (shared with rinkt_neville).
+- [ ] Packaging: GitHub Action cron → `build_site.py` → commit `docs/` → GitHub Pages. ← LAST
 - [ ] (Optional, untested) diffusion-skin tier — prototype & measure before adopting.
 
 ### Status notes

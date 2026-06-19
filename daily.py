@@ -8,6 +8,7 @@ All CPU, deterministic per date.
 Refs: iquilezles.org/articles/{warp,palettes} ; tylerxhobbs.com/words/flow-fields
 """
 import colorsys
+import json
 import sys
 from datetime import date
 
@@ -74,6 +75,8 @@ def cosine_palette(rng):
         t = t[..., None]
         return np.clip(a + b * np.cos(2 * np.pi * (c * t + d)), 0, 1)
 
+    pal.meta = {"type": "cosine", "a": a.tolist(), "b": b.tolist(),
+                "c": c.tolist(), "d": d.tolist()}
     return pal
 
 
@@ -99,6 +102,7 @@ def reference_palette(rng, path=REF, k=12):
         t = np.clip(t, 0, 1)
         return np.stack([np.interp(t, stops, keep[:, c]) for c in range(3)], -1)
 
+    pal.meta = {"type": "reference", "stops": [[float(v) for v in c] for c in keep]}
     return pal
 
 
@@ -294,13 +298,11 @@ def decorate(base, rng, pal, focal):
     return Image.fromarray((a.clip(0, 1) * 255).astype(np.uint8), "RGB")
 
 
-def make_day(seed, n_candidates=10, scorer=None):
+def render_combo(seed, focal, use_ref, n_candidates=10, scorer=None, decorated=None):
+    """Generate-N-pick-best for an explicit style/palette combo -> (img, params)."""
     scorer = scorer or Scorer()
-    drng = np.random.default_rng(seed)
-    focal = bool(drng.random() < 0.45)
-    use_ref = bool(drng.random() < 0.5)
-    style = f"{'focal' if focal else 'marble'}/{'reference' if use_ref else 'cosine'}"
-
+    if decorated is None:
+        decorated = focal
     best = (-1e9, None)
     for i in range(n_candidates):
         cseed = seed * 1000 + i
@@ -308,17 +310,33 @@ def make_day(seed, n_candidates=10, scorer=None):
         if sc > best[0]:
             best = (sc, cseed)
 
-    decorated = focal or drng.random() < 0.35
-    style += "+elements" if decorated else ""
-    print(f"  style={style}  best candidate score={best[0]:.3f}")
-
     full, pal = candidate(best[1], focal, use_ref, FULL)
     down = np.asarray(Image.fromarray((full.clip(0, 1) * 255).astype(np.uint8))
                       .resize((FULL["OUT"], FULL["OUT"]), Image.LANCZOS), np.float32) / 255.0
     img = post(down)
     if decorated:
         img = decorate(img, np.random.default_rng(best[1] + 999), pal, focal)
-    return img, style
+
+    style = f"{'focal' if focal else 'marble'}/{'reference' if use_ref else 'cosine'}"
+    style += "+elements" if decorated else ""
+    params = {
+        "seed": seed, "style": style,
+        "composition": "focal" if focal else "marble",
+        "palette": pal.meta, "elements": decorated, "scorer": scorer.mode,
+        "candidates": n_candidates, "score": round(float(best[0]), 4),
+        "winning_candidate": best[1] - seed * 1000,
+    }
+    return img, params
+
+
+def make_day(seed, n_candidates=10, scorer=None):
+    drng = np.random.default_rng(seed)
+    focal = bool(drng.random() < 0.45)
+    use_ref = bool(drng.random() < 0.5)
+    decorated = focal or drng.random() < 0.35
+    img, params = render_combo(seed, focal, use_ref, n_candidates, scorer, decorated)
+    print(f"  style={params['style']}  best candidate score={params['score']:.3f}")
+    return img, params["style"], params
 
 
 if __name__ == "__main__":
@@ -328,7 +346,9 @@ if __name__ == "__main__":
     n = int(argv[1]) if len(argv) > 1 else 10
     seed = int(d.strftime("%Y%m%d"))
     print(f"date={d} seed={seed}  candidates={n}  scorer={mode}")
-    img, style = make_day(seed, n, Scorer(mode))
-    name = f"day_{seed}.png"
-    img.save(name)
-    print("wrote", name, style)
+    img, style, params = make_day(seed, n, Scorer(mode))
+    params["date"] = d.isoformat()
+    img.save(f"day_{seed}.png")
+    with open(f"day_{seed}.json", "w") as f:
+        json.dump(params, f, indent=2)
+    print(f"wrote day_{seed}.png + .json  {style}")
