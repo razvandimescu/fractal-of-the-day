@@ -74,8 +74,8 @@ it shows each day's image **beside its recipe**, a **live cosine-palette tuner**
 two styles and two palette sources.
 
 ```bash
-python build_site.py            # render today + the 4 comparator corners into docs/
-cd docs && python3 -m http.server 8000   # then open http://localhost:8000
+python build_site.py     # render today + the 4 comparator corners into docs/
+python serve.py          # serve docs/ and open it in your browser (default :8000)
 ```
 
 `build_site.py` emits `docs/img/*.png` + `docs/data/*.json`; `docs/index.html` is static and
