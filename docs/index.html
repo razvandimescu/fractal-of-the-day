@@ -67,6 +67,15 @@ section{padding:62px 0; border-bottom:1px solid var(--line)}
 .frame img{width:100%; height:100%; display:block; object-fit:cover}
 .frame .cap{position:absolute; left:12px; bottom:10px; font-size:11px; color:var(--muted);
   letter-spacing:.12em; text-transform:uppercase; mix-blend-mode:difference}
+.frame #living{position:absolute; inset:0; width:100%; height:100%; display:none}
+.frame .modes{position:absolute; right:10px; top:10px; z-index:3; display:inline-flex;
+  border:1px solid var(--line); border-radius:2px; overflow:hidden}
+.frame .modes button{font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--ink);
+  background:rgba(0,0,0,.42); border:0; border-right:1px solid var(--line); padding:6px 11px;
+  cursor:pointer; text-transform:uppercase; transition:.18s; backdrop-filter:blur(6px)}
+.frame .modes button:last-child{border-right:0}
+.frame .modes button:hover{color:var(--accent)}
+.frame .modes button.on{background:var(--accent); color:#000}
 
 .recipe{display:flex; flex-direction:column; gap:2px}
 .rdate{font-family:var(--display); font-size:30px; font-weight:600; letter-spacing:-.01em; margin-bottom:6px}
@@ -74,6 +83,11 @@ section{padding:62px 0; border-bottom:1px solid var(--line)}
 .row .k{color:var(--muted)}
 .row .v{text-align:right}
 .swatch-strip{height:34px; border:1px solid var(--line); margin:16px 0 6px; border-radius:2px}
+.day-extras{display:flex; align-items:center; gap:14px; margin:18px 0 2px}
+.day-extras .mark{width:54px; height:54px; flex:0 0 auto; border:1px solid var(--line); border-radius:10px; background:#0b0b0e}
+.day-extras .xa{flex:1; min-width:0; display:flex; flex-direction:column; gap:5px}
+.day-extras .xa span{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint)}
+.day-extras audio{width:100%; height:32px}
 .abcd{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px; color:var(--muted)}
 .abcd b{color:var(--ink); font-weight:400}
 .btns{display:flex; gap:10px; margin-top:20px; flex-wrap:wrap}
@@ -148,7 +162,14 @@ footer a{color:var(--muted)}
     <div class="sec-h"><span class="sec-n">01</span><span class="sec-t">Today &amp; its recipe</span>
       <span class="sec-d">The image on the left is fully described by the numbers on the right.</span></div>
     <div class="hero">
-      <div class="frame rise d2"><img id="today-img" alt="today's fractal"><span class="cap" id="today-cap"></span></div>
+      <div class="frame rise d2">
+        <img id="today-img" alt="today's fractal">
+        <canvas id="living"></canvas>
+        <div class="modes" id="modes">
+          <button data-m="live" class="on">● Living</button><button data-m="still">Still</button>
+        </div>
+        <span class="cap" id="today-cap"></span>
+      </div>
       <div class="recipe rise d3" id="recipe"><div class="row"><span class="k">loading…</span></div></div>
     </div>
   </section>
@@ -284,8 +305,15 @@ fetch('data/today.json').then(r=>r.json()).then(d=>{
     <div class="row"><span class="k">candidates</span><span class="v">${d.candidates}</span></div>
     <div class="row"><span class="k">winning score</span><span class="v">${d.score}</span></div>
     ${abcd}
+    <div class="day-extras">
+      <img class="mark" src="img/today.svg" alt="day mark"
+           onerror="this.style.display='none'">
+      <div class="xa"><span>song of the day · same seed</span>
+        <audio controls preload="none" src="audio/today.wav"></audio></div>
+    </div>
     <div class="btns">
       <a class="btn" href="img/today.png" download="fractal-${d.date}.png">Download image</a>
+      <a class="btn" href="img/today.svg" download="mark-${d.date}.svg">Mark (SVG)</a>
       <button id="r-copy">Copy recipe</button>
     </div>`;
   if(isC) paintStrip($('#rstrip'),pal);
@@ -312,6 +340,86 @@ $('#t-rand').addEventListener('click',()=>{const r=(lo,hi)=>+(lo+Math.random()*(
   syncSliders(); render();});
 $('#t-copy').addEventListener('click',()=>copy(JSON.stringify(P,null,2),'params copied'));
 $('#t-link').addEventListener('click',()=>copy(location.href,'permalink copied'));
+
+/* ---- living view: cinemagraph of the day's OWN image ----
+   Samples today.png and displaces it ALONG its own flow field (same Quilez warp
+   constants as daily.py) with a tiny, slow breath. Living IS Still, just alive. */
+const FRAG=`precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform sampler2D uTex;
+float hash(vec2 p){p=fract(p*vec2(123.34,345.45));p+=dot(p,p+34.345);return fract(p.x*p.y);}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);
+  float a=hash(i),b=hash(i+vec2(1,0)),c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));
+  return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
+float fbm(vec2 p){float v=0.0,amp=0.5,norm=0.0;
+  for(int i=0;i<5;i++){v+=amp*vnoise(p);norm+=amp;amp*=0.5;p*=2.0;}return v/norm;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes; float t=uTime;
+  vec2 p=uv*4.5;                                              // same warp field as the engine
+  vec2 q=vec2(fbm(p),fbm(p+vec2(5.2,1.3)));
+  float ang=fbm(p+4.0*q)*4.0*3.14159265;                     // warped flow angle (echoes warped_angle)
+  vec2 flow=vec2(cos(ang),sin(ang));
+  float A=0.008;                                              // displacement ~0.8% of frame
+  float br=0.6*sin(6.2831*0.06*t)+0.4*sin(6.2831*0.037*t);   // slow breath (incommensurate -> no visible loop)
+  vec2 disp=flow*A*br;                                        // drift ALONG the ribbons
+  disp+=vec2(-flow.y,flow.x)*A*0.4*sin(6.2831*0.045*t+ang*2.0); // faint perpendicular shimmer
+  vec2 suv=(uv-0.5)*0.94+0.5;                                 // overscan so displaced edges never show
+  gl_FragColor=vec4(texture2D(uTex,suv+disp).rgb,1.0);
+}`;
+function initLiving(){
+  const cv=$('#living'), gl=cv.getContext('webgl',{antialias:false,alpha:false});
+  if(!gl) return null;
+  const sh=(ty,src)=>{const s=gl.createShader(ty);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s;};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,sh(gl.VERTEX_SHADER,'attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}'));
+  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FRAG));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U=n=>gl.getUniformLocation(prog,n);
+  const uRes=U('uRes'),uTime=U('uTime'),uTex=U('uTex');
+  const tex=gl.createTexture();                               // 1px placeholder until the PNG loads
+  gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([10,10,14,255]));
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.uniform1i(uTex,0);
+  function setImage(src){const im=new Image();
+    im.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im);};
+    im.src=src;}
+  setImage('img/today.png');
+  function resize(){let r=cv.getBoundingClientRect();
+    if(r.width<4||r.height<4) r=cv.parentElement.getBoundingClientRect();   // canvas may be hidden -> use frame
+    const dpr=Math.min(devicePixelRatio||1,2);
+    cv.width=Math.max(8,r.width*dpr|0); cv.height=Math.max(8,r.height*dpr|0);
+    gl.viewport(0,0,cv.width,cv.height); gl.uniform2f(uRes,cv.width,cv.height);}
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let raf=null,running=false,t0=null;
+  function frame(now){ if(t0===null)t0=now;
+    gl.uniform1f(uTime,reduce?0:(now-t0)/1000); gl.drawArrays(gl.TRIANGLES,0,3);
+    raf=requestAnimationFrame(frame);}
+  return {
+    setImage,
+    start(){ if(running)return; running=true; cv.style.display='block'; resize(); raf=requestAnimationFrame(frame);},
+    stop(){ running=false; if(raf)cancelAnimationFrame(raf); raf=null; cv.style.display='none';},
+    get running(){return running;}
+  };
+}
+const living=initLiving();
+if(living){
+  living.start();
+  $('#modes').addEventListener('click',ev=>{const b=ev.target.closest('button'); if(!b)return;
+    $('#modes').querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    b.dataset.m==='live'?living.start():living.stop();});
+  document.addEventListener('visibilitychange',()=>{ if(!$('#modes button[data-m="live"]').classList.contains('on'))return;
+    document.hidden?living.stop():living.start();});
+}else{ $('#modes')&&($('#modes').style.display='none'); }
 
 /* init */
 if(readHash()) {/* hash wins */}

@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 import daily
+import extras
 
 DOCS = Path("docs")
 COMBOS = [("marble", "cosine"), ("marble", "reference"),
@@ -29,12 +30,19 @@ def main():
     (DOCS / "img").mkdir(parents=True, exist_ok=True)
     (DOCS / "data").mkdir(parents=True, exist_ok=True)
 
+    (DOCS / "audio").mkdir(parents=True, exist_ok=True)
+
     print(f"[build] {d} seed={seed} scorer={mode}")
     img, _, params = daily.make_day(seed, n, daily.Scorer(mode))
     params["date"] = d.isoformat()
     img.save(DOCS / "img" / "today.png")
+
+    pal = params["palette"]                               # companion artifacts: same genome
+    (DOCS / "img" / "today.svg").write_text(extras.render_icon(seed, pal, mode="icon"))
+    extras.render_song(seed, pal, str(DOCS / "audio" / "today.wav"))
+    params["mark"], params["song"] = "img/today.svg", "audio/today.wav"
     (DOCS / "data" / "today.json").write_text(json.dumps(params, indent=2))
-    print("  wrote today.png + today.json")
+    print("  wrote today.png + today.svg + today.wav + today.json")
 
     corners = {}
     for comp, pal in COMBOS:                       # same seed, forced combos
