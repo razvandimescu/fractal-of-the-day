@@ -62,7 +62,7 @@ jobs:
             git -C "$TMP" rm -rf . >/dev/null 2>&1 || true
           fi
           cp "${{ steps.gen.outputs.image-path }}" "$TMP/${{ steps.gen.outputs.image-name }}"
-          [ -f "$GITHUB_WORKSPACE/.release-fractal-cache.json" ] \
+          [ -s "$GITHUB_WORKSPACE/.release-fractal-cache.json" ] \
             && cp "$GITHUB_WORKSPACE/.release-fractal-cache.json" "$TMP/cache.json" || true
           git -C "$TMP" add -A
           git -C "$TMP" commit -m "release fractal ${{ steps.gen.outputs.seed }}" || echo "no change"

@@ -45,7 +45,10 @@ class Classifier:
         self.cache_path = Path(cache_path) if cache_path else None
         self.cache = {}
         if self.cache_path and self.cache_path.exists():
-            self.cache = json.loads(self.cache_path.read_text())
+            try:
+                self.cache = json.loads(self.cache_path.read_text() or "{}")
+            except json.JSONDecodeError:
+                pass                                     # empty/corrupt cache -> start fresh
 
     def classify(self, subjects):
         out = [None] * len(subjects)
