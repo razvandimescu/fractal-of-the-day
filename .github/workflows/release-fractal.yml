@@ -29,11 +29,22 @@ jobs:
           git show origin/release-fractals:cache.json \
             > "$GITHUB_WORKSPACE/.release-fractal-cache.json" 2>/dev/null || true
 
-      # Tier-1 changelog classification (groups non-conventional commits) is OFF by default.
-      # To enable: uncomment the step below + the `model:` input, and cache the model with
-      # actions/cache keyed on the model name to avoid re-downloading it each run.
-      # - uses: ai-action/setup-ollama@v1
-      # - run: ollama pull qwen2.5:3b
+      # Tier-1 changelog classification (model: Apache-2.0 qwen3 instruct, non-thinking).
+      # If this fails, the classifier degrades to the deterministic verb-heuristic floor,
+      # so the release notes are never blocked.
+      - name: Cache Ollama model
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen3-4b-instruct-2507
+
+      - name: Start Ollama + pull model
+        continue-on-error: true
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/ >/dev/null && break; sleep 1; done
+          ollama pull qwen3:4b-instruct-2507-q4_K_M
 
       - id: gen
         uses: ./.github/actions/release-fractal
@@ -43,7 +54,7 @@ jobs:
           image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
           private: ${{ github.event.repository.private }}
           cache: ${{ github.workspace }}/.release-fractal-cache.json
-          # model: qwen2.5:3b
+          model: qwen3:4b-instruct-2507-q4_K_M
 
       - name: Host image on release-fractals branch
         if: steps.gen.outputs.skipped != 'true'

@@ -68,7 +68,7 @@ def resolve_range(base, head, since, max_n):
 def gather(base, head, since, max_n):
     base_ref, label, log_args = resolve_range(base, head, since, max_n)
     fmt = US.join(["%H", "%h", "%an", "%s", "%ad"])
-    raw = git("log", f"--pretty=format:{fmt}", "--date=short", *log_args)
+    raw = git("log", "--no-merges", f"--pretty=format:{fmt}", "--date=short", *log_args)
     commits = [dict(zip(("hash", "short", "author", "subject", "date"), ln.split(US)))
                for ln in raw.splitlines() if ln]
 
