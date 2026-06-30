@@ -1,29 +1,49 @@
-name: Release Fractal (dogfood)
+name: Release Fractal
 
 on:
-  pull_request:
+  release:
+    types: [published]
 
 permissions:
-  contents: write          # push the image to the release-fractals branch
-  pull-requests: write     # post/update the PR comment
+  contents: write          # push the image branch + edit the release notes
 
 jobs:
   fractal:
     runs-on: ubuntu-latest
-    # Fork PRs get read-only tokens; host + comment steps would fail. Same-repo only.
-    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Resolve release range
+        id: range
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Restore changelog classification cache
+        run: |
+          git fetch origin release-fractals 2>/dev/null || true
+          git show origin/release-fractals:cache.json \
+            > "$GITHUB_WORKSPACE/.release-fractal-cache.json" 2>/dev/null || true
+
+      # Tier-1 changelog classification (groups non-conventional commits) is OFF by default.
+      # To enable: uncomment the step below + the `model:` input, and cache the model with
+      # actions/cache keyed on the model name to avoid re-downloading it each run.
+      # - uses: ai-action/setup-ollama@v1
+      # - run: ollama pull qwen2.5:3b
+
       - id: gen
         uses: ./.github/actions/release-fractal
         with:
-          base: ${{ github.event.pull_request.base.sha }}
-          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ steps.range.outputs.prev }}
+          head: ${{ steps.range.outputs.tag }}
           image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
           private: ${{ github.event.repository.private }}
+          cache: ${{ github.workspace }}/.release-fractal-cache.json
+          # model: qwen2.5:3b
 
       - name: Host image on release-fractals branch
         if: steps.gen.outputs.skipped != 'true'
@@ -42,21 +62,20 @@ jobs:
             git -C "$TMP" rm -rf . >/dev/null 2>&1 || true
           fi
           cp "${{ steps.gen.outputs.image-path }}" "$TMP/${{ steps.gen.outputs.image-name }}"
-          git -C "$TMP" add "${{ steps.gen.outputs.image-name }}"
+          [ -f "$GITHUB_WORKSPACE/.release-fractal-cache.json" ] \
+            && cp "$GITHUB_WORKSPACE/.release-fractal-cache.json" "$TMP/cache.json" || true
+          git -C "$TMP" add -A
           git -C "$TMP" commit -m "release fractal ${{ steps.gen.outputs.seed }}" || echo "no change"
           git -C "$TMP" push origin release-fractals
 
-      - name: Post / update PR comment
+      - name: Append fractal to release notes
+        if: steps.gen.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          BODY="${{ steps.gen.outputs.comment-path }}"
-          CID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-                  --jq '.[] | select(.body | startswith("<!-- release-fractal -->")) | .id' | head -1)
-          if [ -n "$CID" ]; then
-            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$CID" -F body=@"$BODY" >/dev/null
-          else
-            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-              -F body=@"$BODY" >/dev/null
-          fi
+          TAG="${{ steps.range.outputs.tag }}"
+          BODY="$(gh release view "$TAG" --json body -q .body)"
+          BODY="${BODY%%<!-- release-fractal -->*}"     # strip a prior block (sticky)
+          { printf '%s\n\n' "$BODY"; cat "${{ steps.gen.outputs.comment-path }}"; } > /tmp/notes.md
+          gh release edit "$TAG" --notes-file /tmp/notes.md

@@ -81,12 +81,47 @@ python serve.py          # serve docs/ and open it in your browser (default :800
 `build_site.py` emits `docs/img/*.png` + `docs/data/*.json`; `docs/index.html` is static and
 reads them. Designed to be served by GitHub Pages from `/docs`.
 
+## Release Fractal (GitHub Action)
+
+Determinism has a second use beyond a daily image: a **release fingerprint**. The
+[`release-fractal`](.github/actions/release-fractal) action turns each published release
+into a unique fractal + a grouped changelog, appended to the release notes.
+
+The seed is `sha256(commit range)`, so the image is a pure function of *what changed* —
+unique per release, reproducible forever, and (because each URL is content-addressed)
+safe from GitHub's image-proxy cache. Repo signal drives the look, so the picture is a
+fingerprint, not wallpaper:
+
+| Signal | Visual |
+|---|---|
+| high churn / commit | `focal` radial burst (vs. flowing `marble`) |
+| ≥ 2 contributors | reference-sampled palette (vs. cosine) |
+| ≥ 8 commits | discrete-element overlay |
+
+Use it in any **public** repo by copying [`.github/workflows/release-fractal.yml`](.github/workflows/release-fractal.yml)
+(it runs `on: release [published]`, resolves `prev-tag..tag`, and pins the action):
+
+```yaml
+- uses: razvandimescu/fractal-of-the-day/.github/actions/release-fractal@<sha>
+  with:
+    base: ${{ steps.range.outputs.prev }}        # previous tag (see workflow)
+    head: ${{ github.event.release.tag_name }}
+    image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
+    private: ${{ github.event.repository.private }}
+```
+
+The render is pure-CPU and needs no API key. It is **public-repo only** by design — the
+embedded image must resolve through GitHub's anonymous proxy, which can't reach private
+repos — so on a private repo the action emits a waitlist no-op instead of a broken image.
+
 ## Layout
 
 ```
 daily.py                 the engine (styles, palettes, scorer, overlay, orchestration)
+release_fractal.py       release-fingerprint entrypoint (commit range -> fractal + changelog)
 build_site.py            renders the site assets (today + comparator corners) into docs/
 docs/                    interactive site: index.html + img/ + data/
+.github/actions/         release-fractal composite action
 FINDINGS.md              research synthesis + decisions + roadmap
 gallery/                 curated sample outputs
 evolution/               earlier prototypes (flame/Julia/Newton, then the v2 flow core)
@@ -99,3 +134,7 @@ Technique sources: [Inigo Quilez](https://iquilezles.org) (domain warping, cosin
 palettes), [Tyler Hobbs](https://www.tylerxhobbs.com) (flow fields, colour in generative
 art), the [flam3](https://github.com/scottdraves/flam3) fractal-flame renderer, and the
 [LAION aesthetic predictor](https://github.com/christophschuhmann/improved-aesthetic-predictor).
+
+## License
+
+[Apache-2.0](LICENSE).

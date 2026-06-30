@@ -25,6 +25,14 @@ inputs:
     description: Output directory (relative to the workspace).
     required: false
     default: "release_fractal_out"
+  model:
+    description: "Ollama model for tier-1 changelog classification (e.g. qwen2.5:3b). Empty = rules only."
+    required: false
+    default: ""
+  cache:
+    description: "Path to the classification cache JSON (content-addressed; persist across runs)."
+    required: false
+    default: ""
 outputs:
   seed:
     value: ${{ steps.run.outputs.seed }}
@@ -52,4 +60,6 @@ runs:
           --max "${{ inputs.max }}" \
           --image-base-url "${{ inputs.image-base-url }}" \
           --private "${{ inputs.private }}" \
+          --model "${{ inputs.model }}" \
+          --cache "${{ inputs.cache }}" \
           --out "$GITHUB_WORKSPACE/${{ inputs.out }}"
