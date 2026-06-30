@@ -28,6 +28,28 @@ def conventional_type(subject):
     return m.group(1) if m and m.group(1) in CATEGORIES else None
 
 
+# Leading-verb -> category. Free, deterministic floor for imperative commits and the
+# graceful-degradation target when the LLM is unavailable.
+VERB_TYPE = {
+    "add": "feat", "implement": "feat", "introduce": "feat", "create": "feat",
+    "support": "feat", "enable": "feat",
+    "fix": "fix", "resolve": "fix", "correct": "fix", "patch": "fix", "handle": "fix",
+    "guard": "fix", "prevent": "fix", "tolerate": "fix", "repair": "fix",
+    "optimize": "perf", "optimise": "perf", "speed": "perf",
+    "refactor": "refactor", "rename": "refactor", "move": "refactor", "simplify": "refactor",
+    "extract": "refactor", "restructure": "refactor", "reorganize": "refactor",
+    "document": "docs", "doc": "docs", "docs": "docs",
+    "test": "test", "cover": "test",
+    "bump": "chore", "upgrade": "chore", "pin": "chore", "remove": "chore",
+    "delete": "chore", "drop": "chore",
+}
+
+
+def heuristic_type(subject):
+    m = re.match(r"[A-Za-z]+", subject)
+    return VERB_TYPE.get(m.group(0).lower(), "other") if m else "other"
+
+
 def _key(subject):
     return hashlib.sha256(subject.encode()).hexdigest()[:16]
 
@@ -67,17 +89,16 @@ class Classifier:
             if self.model or self.backend:
                 try:
                     labels = self._run_llm([s for _, s in misses])
-                except Exception as e:                       # unreachable model -> degrade
-                    print(f"  [classifier] LLM unavailable ({e}); remainder -> other")
+                except Exception as e:                       # unreachable model -> heuristic
+                    print(f"  [classifier] LLM unavailable ({e}); falling back to heuristic")
             if labels:
                 for (i, s), lab in zip(misses, labels):
-                    lab = lab if lab in CATEGORIES else "other"
-                    out[i] = lab
-                    self.cache[_key(s)] = lab                # cache only real results
+                    out[i] = lab if lab in CATEGORIES else heuristic_type(s)
+                    self.cache[_key(s)] = out[i]             # cache only real LLM results
                 self._save()
             else:
-                for i, _ in misses:
-                    out[i] = "other"
+                for i, s in misses:                          # deterministic floor, not cached
+                    out[i] = heuristic_type(s)
         return out
 
     def _run_llm(self, subjects):
@@ -88,10 +109,12 @@ class Classifier:
 
     def _ollama(self, subjects):
         numbered = "\n".join(f"{i}: {s}" for i, s in enumerate(subjects))
+        schema = {"type": "object", "required": ["labels"], "properties": {
+            "labels": {"type": "array", "items": {"type": "string", "enum": CATEGORIES}}}}
         body = json.dumps({
             "model": self.model,
             "stream": False,
-            "format": "json",
+            "format": schema,                            # grammar-constrained to the enum
             "options": {"temperature": 0},
             "messages": [
                 {"role": "system", "content":
