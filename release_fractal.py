@@ -55,6 +55,8 @@ def _short(ref):
 def resolve_range(base, head, since, max_n):
     if base:
         return base, f"{_short(base)}..{_short(head or 'HEAD')}", [f"{base}..{head or 'HEAD'}"]
+    if head:                       # release with no previous tag -> everything up to the tag
+        return None, _short(head), ["-n", str(max_n), head]
     if since:
         return since, since, [f"{since}..HEAD"]
     last_tag = git("describe", "--tags", "--abbrev=0")
