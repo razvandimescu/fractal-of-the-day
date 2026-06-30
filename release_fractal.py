@@ -20,7 +20,6 @@ CI:     python release_fractal.py --base $BASE --head $HEAD \
 import argparse
 import hashlib
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,17 +29,16 @@ TARGET = Path(os.environ.get("GITHUB_WORKSPACE") or Path.cwd())   # repo being a
 os.chdir(REPO)                                  # so `import daily` + reference.png resolve
 sys.path.insert(0, str(REPO))
 
+from PIL import Image                            # noqa: E402
 import daily                                     # noqa: E402
+import changelog                                  # noqa: E402
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 US = "\x1f"
 MARKER = "<!-- release-fractal -->"
-SECTIONS = [
-    ("feat", "✨ Features"), ("fix", "🐛 Fixes"), ("perf", "⚡ Performance"),
-    ("refactor", "🧹 Refactoring"), ("docs", "📝 Docs"), ("test", "✅ Tests"),
-    ("build", "📦 Build"), ("ci", "🤖 CI"), ("chore", "🔧 Chores"),
-]
-TYPE_RE = re.compile(r"^(\w+)(\([^)]*\))?(!)?:\s*(.*)$")
+RENDER_PX = 880                                  # 2x the 440px display -> crisp on retina
+DISPLAY_PX = 440
+WEBP_QUALITY = 82                                # ~150 KB for this art; ~12x smaller than PNG
 
 
 def git(*args):
@@ -48,9 +46,15 @@ def git(*args):
                           capture_output=True, text=True).stdout.strip()
 
 
+def _short(ref):
+    r = ref or ""
+    is_sha = len(r) == 40 and all(ch in "0123456789abcdef" for ch in r)
+    return r[:7] if is_sha else r          # shorten SHAs, keep tag names intact
+
+
 def resolve_range(base, head, since, max_n):
     if base:
-        return base, f"{base[:7]}..{(head or 'HEAD')[:7]}", [f"{base}..{head or 'HEAD'}"]
+        return base, f"{_short(base)}..{_short(head or 'HEAD')}", [f"{base}..{head or 'HEAD'}"]
     if since:
         return since, since, [f"{since}..HEAD"]
     last_tag = git("describe", "--tags", "--abbrev=0")
@@ -99,25 +103,11 @@ def derive_params(sig):
     )
 
 
-def changelog_md(sig):
-    buckets = {key: [] for key, _ in SECTIONS}
-    other = []
-    for c in sig["commits"]:
-        m = TYPE_RE.match(c["subject"])
-        line = f"- {m.group(4) if m else c['subject']} (`{c['short']}`)"
-        (buckets[m.group(1)] if m and m.group(1) in buckets else other).append(line)
-    out = [f"### {title}\n" + "\n".join(buckets[key])
-           for key, title in SECTIONS if buckets[key]]
-    if other:
-        out.append("### 📋 Other\n" + "\n".join(other))
-    return "\n\n".join(out) or "_No commits in range._"
-
-
 def comment_md(sig, image_url, changelog):
     return f"""{MARKER}
 ## 🌀 Release fingerprint — {sig['label']}
 
-![release fractal]({image_url})
+<img src="{image_url}" width="{DISPLAY_PX}" height="{DISPLAY_PX}" alt="release fractal" />
 
 > *{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
 +{sig['insertions']}/-{sig['deletions']} across {sig['files']} files · {sig['span']}*
@@ -156,6 +146,8 @@ def main():
     ap.add_argument("--waitlist-url", default="https://github.com/razvandimescu/fractal-of-the-day")
     ap.add_argument("--candidates", type=int, default=4)
     ap.add_argument("--out", default="release_fractal_out")
+    ap.add_argument("--model", default="", help="Ollama model for tier-1 classification; off if empty")
+    ap.add_argument("--cache", default="", help="path to the classification cache JSON")
     a = ap.parse_args()
 
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -175,7 +167,7 @@ def main():
         return
 
     p = derive_params(sig)
-    image_name = f"fractal_{p['seed']}.png"
+    image_name = f"fractal_{p['seed']}.webp"
     image_url = f"{a.image_base_url.rstrip('/')}/{image_name}"
     print(f"range={sig['label']} commits={sig['n_commits']} authors={sig['n_authors']} "
           f"churn=+{sig['insertions']}/-{sig['deletions']}")
@@ -186,8 +178,11 @@ def main():
                                 n_candidates=a.candidates, scorer=daily.Scorer("heuristic"),
                                 decorated=p["decorated"])
     image_path = out / image_name
-    img.save(image_path)
-    comment_path.write_text(comment_md(sig, image_url, changelog_md(sig)))
+    img.resize((RENDER_PX, RENDER_PX), Image.LANCZOS).save(
+        image_path, "WEBP", quality=WEBP_QUALITY, method=6)
+    classifier = changelog.Classifier(model=a.model or None, cache_path=a.cache or None)
+    comment_path.write_text(comment_md(sig, image_url,
+                                       changelog.changelog_md(sig["commits"], classifier)))
 
     set_output(skipped="false", seed=str(p["seed"]),
                image_path=str(image_path), image_name=image_name,
