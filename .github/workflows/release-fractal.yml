@@ -1,0 +1,62 @@
+name: Release Fractal (dogfood)
+
+on:
+  pull_request:
+
+permissions:
+  contents: write          # push the image to the release-fractals branch
+  pull-requests: write     # post/update the PR comment
+
+jobs:
+  fractal:
+    runs-on: ubuntu-latest
+    # Fork PRs get read-only tokens; host + comment steps would fail. Same-repo only.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: gen
+        uses: ./.github/actions/release-fractal
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
+          private: ${{ github.event.repository.private }}
+
+      - name: Host image on release-fractals branch
+        if: steps.gen.outputs.skipped != 'true'
+        run: |
+          set -e
+          git config user.name "release-fractal[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin release-fractals 2>/dev/null || true
+          TMP="$(mktemp -d)"
+          if git show-ref --verify --quiet refs/remotes/origin/release-fractals; then
+            git worktree add "$TMP" origin/release-fractals
+            git -C "$TMP" checkout -B release-fractals
+          else
+            git worktree add --detach "$TMP"
+            git -C "$TMP" checkout --orphan release-fractals
+            git -C "$TMP" rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp "${{ steps.gen.outputs.image-path }}" "$TMP/${{ steps.gen.outputs.image-name }}"
+          git -C "$TMP" add "${{ steps.gen.outputs.image-name }}"
+          git -C "$TMP" commit -m "release fractal ${{ steps.gen.outputs.seed }}" || echo "no change"
+          git -C "$TMP" push origin release-fractals
+
+      - name: Post / update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          BODY="${{ steps.gen.outputs.comment-path }}"
+          CID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+                  --jq '.[] | select(.body | startswith("<!-- release-fractal -->")) | .id' | head -1)
+          if [ -n "$CID" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$CID" -F body=@"$BODY" >/dev/null
+          else
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+              -F body=@"$BODY" >/dev/null
+          fi

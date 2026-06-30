@@ -1,0 +1,55 @@
+name: Release Fractal
+description: Generate a deterministic "release fingerprint" fractal + changelog from a commit range.
+inputs:
+  base:
+    description: Base ref/SHA of the range (empty -> last tag, else last N commits).
+    required: false
+    default: ""
+  head:
+    description: Head ref/SHA of the range.
+    required: false
+    default: ""
+  max:
+    description: Max commits to summarize when there is no base and no tag.
+    required: false
+    default: "50"
+  image-base-url:
+    description: Public base URL the rendered PNG will be hosted at (for the embed).
+    required: false
+    default: "."
+  private:
+    description: "true if the repo is private -> emits a waitlist no-op instead of rendering."
+    required: false
+    default: "false"
+  out:
+    description: Output directory (relative to the workspace).
+    required: false
+    default: "release_fractal_out"
+outputs:
+  seed:
+    value: ${{ steps.run.outputs.seed }}
+  image-path:
+    value: ${{ steps.run.outputs.image_path }}
+  image-name:
+    value: ${{ steps.run.outputs.image_name }}
+  comment-path:
+    value: ${{ steps.run.outputs.comment_path }}
+  skipped:
+    value: ${{ steps.run.outputs.skipped }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - id: run
+      shell: bash
+      run: |
+        ROOT="$GITHUB_ACTION_PATH/../../.."
+        pip install --quiet -r "$ROOT/requirements.txt"
+        python "$ROOT/release_fractal.py" \
+          --base "${{ inputs.base }}" --head "${{ inputs.head }}" \
+          --max "${{ inputs.max }}" \
+          --image-base-url "${{ inputs.image-base-url }}" \
+          --private "${{ inputs.private }}" \
+          --out "$GITHUB_WORKSPACE/${{ inputs.out }}"

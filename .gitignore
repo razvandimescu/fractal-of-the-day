@@ -11,3 +11,9 @@ evolution/*.png
 
 .python-version
 .DS_Store
+
+# private planning / strategy notes — repo is public, keep these local
+/plans/
+
+# release-fractal action local output
+/release_fractal_out/
