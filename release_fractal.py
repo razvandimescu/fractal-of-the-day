@@ -106,19 +106,23 @@ def derive_params(sig):
     )
 
 
-def comment_md(sig, image_url, changelog):
+def comment_md(sig, image_url, changelog=None):
     # Image floats left (align= is GitHub-allowed; style= is stripped) so the heading, stats,
-    # and changelog fill the row beside it. Leading with the image lifts it above the feed
-    # card's "Read more" fold. Real releases have enough changelog to clear the float; the
-    # <br clear> is belt-and-suspenders for near-empty ranges.
-    return f"""{MARKER_START}
+    # and whatever follows fill the row beside it. Leading with the image lifts it above the
+    # feed card's "Read more" fold.
+    head = f"""{MARKER_START}
 <img align="left" width="{DISPLAY_PX}" height="{DISPLAY_PX}" src="{image_url}" alt="release fractal" />
 
 ### 🌀 Release fingerprint — {sig['label']}
 
 *{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
 +{sig['insertions']}/-{sig['deletions']} across {sig['files']} files · {sig['span']}*
-
+"""
+    # keep mode: end the block early so the host's own notes flow beside the float.
+    if not changelog:
+        return head + f"{MARKER_END}\n"
+    # generate mode: our changelog, then clear the float and close with the attribution.
+    return head + f"""
 {changelog}
 
 <br clear="all" />
@@ -159,6 +163,8 @@ def main():
     ap.add_argument("--out", default="release_fractal_out")
     ap.add_argument("--model", default="", help="Ollama model for tier-1 classification; off if empty")
     ap.add_argument("--cache", default="", help="path to the classification cache JSON")
+    ap.add_argument("--no-changelog", action="store_true",
+                    help="keep mode: image + fingerprint only, so the host's own notes stand")
     a = ap.parse_args()
 
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -191,9 +197,11 @@ def main():
     image_path = out / image_name
     img.resize((RENDER_PX, RENDER_PX), Image.LANCZOS).save(
         image_path, "WEBP", quality=WEBP_QUALITY, method=6)
-    classifier = changelog.Classifier(model=a.model or None, cache_path=a.cache or None)
-    comment_path.write_text(comment_md(sig, image_url,
-                                       changelog.changelog_md(sig["commits"], classifier)))
+    log = None
+    if not a.no_changelog:
+        classifier = changelog.Classifier(model=a.model or None, cache_path=a.cache or None)
+        log = changelog.changelog_md(sig["commits"], classifier)
+    comment_path.write_text(comment_md(sig, image_url, log))
 
     set_output(skipped="false", seed=str(p["seed"]),
                image_path=str(image_path), image_name=image_name,

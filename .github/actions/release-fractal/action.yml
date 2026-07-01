@@ -33,6 +33,10 @@ inputs:
     description: "Path to the classification cache JSON (content-addressed; persist across runs)."
     required: false
     default: ""
+  changelog:
+    description: "generate = classify commits into a 10-bucket changelog; keep = leave the host's own notes in place and just attach the fractal."
+    required: false
+    default: "generate"
 outputs:
   seed:
     value: ${{ steps.run.outputs.seed }}
@@ -52,6 +56,8 @@ runs:
         python-version: "3.12"
     - id: run
       shell: bash
+      env:
+        NO_CHANGELOG: ${{ inputs.changelog == 'keep' && '--no-changelog' || '' }}
       run: |
         ROOT="$GITHUB_ACTION_PATH/../../.."
         pip install --quiet -r "$ROOT/requirements.txt"
@@ -62,4 +68,5 @@ runs:
           --private "${{ inputs.private }}" \
           --model "${{ inputs.model }}" \
           --cache "${{ inputs.cache }}" \
+          $NO_CHANGELOG \
           --out "$GITHUB_WORKSPACE/${{ inputs.out }}"

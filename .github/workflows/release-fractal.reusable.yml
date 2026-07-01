@@ -16,6 +16,10 @@ on:
         description: "Release tag to render. Empty -> read github.event.release.tag_name (release: published trigger). Set it when chaining after goreleaser, whose GITHUB_TOKEN-created release does not fire the release event: pass github.ref_name."
         type: string
         default: ""
+      changelog:
+        description: "generate (default) = classify commits into a 10-bucket changelog; keep = leave the host's own release notes in place and just attach the fractal."
+        type: string
+        default: "generate"
       model:
         description: "Ollama model for tier-1 changelog classification (e.g. qwen3:4b-instruct-2507-q4_K_M). Empty = rules only (free, no download)."
         type: string
@@ -78,6 +82,7 @@ jobs:
           max: ${{ inputs.max }}
           image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
           private: ${{ github.event.repository.private }}
+          changelog: ${{ inputs.changelog }}
           model: ${{ inputs.model }}
           cache: ${{ github.workspace }}/.release-fractal-cache.json
 
