@@ -29,22 +29,24 @@ jobs:
           git show origin/release-fractals:cache.json \
             > "$GITHUB_WORKSPACE/.release-fractal-cache.json" 2>/dev/null || true
 
-      # Tier-1 changelog classification (model: Apache-2.0 qwen3 instruct, non-thinking).
-      # If this fails, the classifier degrades to the deterministic verb-heuristic floor,
-      # so the release notes are never blocked.
-      - name: Cache Ollama model
-        uses: actions/cache@v4
-        with:
-          path: ~/.ollama/models
-          key: ollama-qwen3-4b-instruct-2507
-
-      - name: Start Ollama + pull model
-        continue-on-error: true
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          for i in $(seq 1 30); do curl -sf http://localhost:11434/ >/dev/null && break; sleep 1; done
-          ollama pull qwen3:4b-instruct-2507-q4_K_M
+      # OPTIONAL tier-1 LLM classification. OFF by default: the verb-heuristic floor already
+      # groups commits well for free, and a local model costs a ~2.5 GB download that GitHub's
+      # cache evicts after 7 days idle — so infrequent releases re-pay it almost every time.
+      # Enable only if you release often and want the extra polish; otherwise leave it off (or
+      # use the hosted option). To enable: uncomment the two steps below AND the `model:` input.
+      #
+      # - name: Cache Ollama model
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: ~/.ollama/models
+      #     key: ollama-qwen3-4b-instruct-2507
+      # - name: Start Ollama + pull model
+      #   continue-on-error: true            # falls back to the heuristic floor if setup fails
+      #   run: |
+      #     curl -fsSL https://ollama.com/install.sh | sh
+      #     nohup ollama serve >/tmp/ollama.log 2>&1 &
+      #     for i in $(seq 1 30); do curl -sf http://localhost:11434/ >/dev/null && break; sleep 1; done
+      #     ollama pull qwen3:4b-instruct-2507-q4_K_M
 
       - id: gen
         uses: ./.github/actions/release-fractal
@@ -54,7 +56,7 @@ jobs:
           image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
           private: ${{ github.event.repository.private }}
           cache: ${{ github.workspace }}/.release-fractal-cache.json
-          model: qwen3:4b-instruct-2507-q4_K_M
+          # model: qwen3:4b-instruct-2507-q4_K_M   # uncomment with the two steps above
 
       - name: Host image on release-fractals branch
         if: steps.gen.outputs.skipped != 'true'
