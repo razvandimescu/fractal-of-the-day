@@ -37,6 +37,10 @@ inputs:
     description: "generate = classify commits into a 10-bucket changelog; keep = leave the host's own notes in place and just attach the fractal."
     required: false
     default: "generate"
+  brand:
+    description: "owner/repo for the signature chip baked into the image; empty = no chip."
+    required: false
+    default: ""
 outputs:
   seed:
     value: ${{ steps.run.outputs.seed }}
@@ -68,5 +72,6 @@ runs:
           --private "${{ inputs.private }}" \
           --model "${{ inputs.model }}" \
           --cache "${{ inputs.cache }}" \
+          --brand "${{ inputs.brand }}" \
           $NO_CHANGELOG \
           --out "$GITHUB_WORKSPACE/${{ inputs.out }}"

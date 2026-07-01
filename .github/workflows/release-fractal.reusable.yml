@@ -83,6 +83,7 @@ jobs:
           image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
           private: ${{ github.event.repository.private }}
           changelog: ${{ inputs.changelog }}
+          brand: ${{ github.repository }}
           model: ${{ inputs.model }}
           cache: ${{ github.workspace }}/.release-fractal-cache.json
 
