@@ -42,6 +42,7 @@ RENDER_PX = 880                                  # ~3.6x the 240px display -> cr
 DISPLAY_PX = 480                                 # hero block: the branded card leads the notes
 WEBP_QUALITY = 82                                # ~150 KB for this art; ~12x smaller than PNG
 FONT_DIR = REPO / "fonts"                        # bundled house fonts (OFL/Apache)
+SITE = "https://razvandimescu.github.io/fractal-of-the-day/"   # "how it's made" backlink
 
 
 def git(*args):
@@ -175,15 +176,17 @@ def comment_md(sig, image_url, changelog=None):
 *{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
 +{sig['insertions']}/-{sig['deletions']} across {sig['files']} files · {sig['span']}*
 """
-    # keep mode: end the block early so the host's own notes follow below.
+    footer = (f"<sub>🎨 Generated from this release's commit signal — "
+              f"[how it's made →]({SITE})</sub>")
+    # keep mode: fingerprint + backlink only, so the host's own notes follow below.
     if not changelog:
-        return head + f"{MARKER_END}\n"
-    # generate mode: our changelog, then close with the attribution.
+        return head + f"\n{footer}\n{MARKER_END}\n"
+    # generate mode: our changelog, then the attribution + backlink.
     return head + f"""
 {changelog}
 
 ---
-<sub>🎨 Generated from this change's commit signal — every release looks different.</sub>
+{footer}
 {MARKER_END}
 """
 
