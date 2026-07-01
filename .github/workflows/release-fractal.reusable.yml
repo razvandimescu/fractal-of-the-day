@@ -104,7 +104,7 @@ jobs:
           git -C "$TMP" commit -m "release fractal ${{ steps.gen.outputs.seed }}" || echo "no change"
           git -C "$TMP" push origin release-fractals
 
-      - name: Append fractal to release notes
+      - name: Prepend fractal to release notes
         if: steps.gen.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,6 +112,9 @@ jobs:
           set -e
           TAG="${{ steps.range.outputs.tag }}"
           BODY="$(gh release view "$TAG" --json body -q .body)"
-          BODY="${BODY%%<!-- release-fractal -->*}"     # strip a prior block (sticky)
-          { printf '%s\n\n' "$BODY"; cat "${{ steps.gen.outputs.comment-path }}"; } > /tmp/notes.md
+          # strip a prior block: new paired markers (anywhere), then a legacy single-marker tail
+          BODY="$(printf '%s' "$BODY" | sed '/<!-- release-fractal:start -->/,/<!-- release-fractal:end -->/d')"
+          BODY="${BODY%%<!-- release-fractal -->*}"
+          # lead with the fractal so it clears the feed-card fold, then the original notes
+          { cat "${{ steps.gen.outputs.comment-path }}"; printf '\n%s\n' "$BODY"; } > /tmp/notes.md
           gh release edit "$TAG" --notes-file /tmp/notes.md
