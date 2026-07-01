@@ -12,6 +12,10 @@ name: Release Fractal (reusable)
 on:
   workflow_call:
     inputs:
+      tag:
+        description: "Release tag to render. Leave empty to read github.event.release.tag_name (release: published trigger). Set it when chaining after goreleaser, whose GITHUB_TOKEN-created release does NOT fire the release event: pass ${{ github.ref_name }}."
+        type: string
+        default: ""
       model:
         description: "Ollama model for tier-1 changelog classification (e.g. qwen3:4b-instruct-2507-q4_K_M). Empty = rules only (free, no download)."
         type: string
@@ -35,7 +39,8 @@ jobs:
       - name: Resolve release range
         id: range
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ inputs.tag }}"
+          [ -z "$TAG" ] && TAG="${{ github.event.release.tag_name }}"
           PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
           echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
           echo "prev=$PREV" >> "$GITHUB_OUTPUT"
