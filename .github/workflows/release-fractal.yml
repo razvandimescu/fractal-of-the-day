@@ -5,90 +5,12 @@ on:
     types: [published]
 
 permissions:
-  contents: write          # push the image branch + edit the release notes
+  contents: write
 
 jobs:
   fractal:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Resolve release range
-        id: range
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
-          echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
-          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
-
-      - name: Restore changelog classification cache
-        run: |
-          git fetch origin release-fractals 2>/dev/null || true
-          git show origin/release-fractals:cache.json \
-            > "$GITHUB_WORKSPACE/.release-fractal-cache.json" 2>/dev/null || true
-
-      # OPTIONAL tier-1 LLM classification. OFF by default: the verb-heuristic floor already
-      # groups commits well for free, and a local model costs a ~2.5 GB download that GitHub's
-      # cache evicts after 7 days idle — so infrequent releases re-pay it almost every time.
-      # Enable only if you release often and want the extra polish; otherwise leave it off (or
-      # use the hosted option). To enable: uncomment the two steps below AND the `model:` input.
-      #
-      # - name: Cache Ollama model
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ~/.ollama/models
-      #     key: ollama-qwen3-4b-instruct-2507
-      # - name: Start Ollama + pull model
-      #   continue-on-error: true            # falls back to the heuristic floor if setup fails
-      #   run: |
-      #     curl -fsSL https://ollama.com/install.sh | sh
-      #     nohup ollama serve >/tmp/ollama.log 2>&1 &
-      #     for i in $(seq 1 30); do curl -sf http://localhost:11434/ >/dev/null && break; sleep 1; done
-      #     ollama pull qwen3:4b-instruct-2507-q4_K_M
-
-      - id: gen
-        uses: ./.github/actions/release-fractal
-        with:
-          base: ${{ steps.range.outputs.prev }}
-          head: ${{ steps.range.outputs.tag }}
-          image-base-url: https://raw.githubusercontent.com/${{ github.repository }}/release-fractals
-          private: ${{ github.event.repository.private }}
-          cache: ${{ github.workspace }}/.release-fractal-cache.json
-          # model: qwen3:4b-instruct-2507-q4_K_M   # uncomment with the two steps above
-
-      - name: Host image on release-fractals branch
-        if: steps.gen.outputs.skipped != 'true'
-        run: |
-          set -e
-          git config user.name "release-fractal[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin release-fractals 2>/dev/null || true
-          TMP="$(mktemp -d)"
-          if git show-ref --verify --quiet refs/remotes/origin/release-fractals; then
-            git worktree add "$TMP" origin/release-fractals
-            git -C "$TMP" checkout -B release-fractals
-          else
-            git worktree add --detach "$TMP"
-            git -C "$TMP" checkout --orphan release-fractals
-            git -C "$TMP" rm -rf . >/dev/null 2>&1 || true
-          fi
-          cp "${{ steps.gen.outputs.image-path }}" "$TMP/${{ steps.gen.outputs.image-name }}"
-          [ -s "$GITHUB_WORKSPACE/.release-fractal-cache.json" ] \
-            && cp "$GITHUB_WORKSPACE/.release-fractal-cache.json" "$TMP/cache.json" || true
-          git -C "$TMP" add -A
-          git -C "$TMP" commit -m "release fractal ${{ steps.gen.outputs.seed }}" || echo "no change"
-          git -C "$TMP" push origin release-fractals
-
-      - name: Append fractal to release notes
-        if: steps.gen.outputs.skipped != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          TAG="${{ steps.range.outputs.tag }}"
-          BODY="$(gh release view "$TAG" --json body -q .body)"
-          BODY="${BODY%%<!-- release-fractal -->*}"     # strip a prior block (sticky)
-          { printf '%s\n\n' "$BODY"; cat "${{ steps.gen.outputs.comment-path }}"; } > /tmp/notes.md
-          gh release edit "$TAG" --notes-file /tmp/notes.md
+    uses: ./.github/workflows/release-fractal.reusable.yml
+    # Opt into tier-1 LLM classification (off by default — ~2.5 GB model, Actions cache
+    # evicts after 7 days idle, so infrequent releasers re-pay it). To enable:
+    #   with:
+    #     model: qwen3:4b-instruct-2507-q4_K_M
