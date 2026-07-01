@@ -18,6 +18,7 @@ CI:     python release_fractal.py --base $BASE --head $HEAD \
             --private $IS_PRIVATE --out "$OUT"
 """
 import argparse
+import colorsys
 import hashlib
 import os
 import subprocess
@@ -29,7 +30,7 @@ TARGET = Path(os.environ.get("GITHUB_WORKSPACE") or Path.cwd())   # repo being a
 os.chdir(REPO)                                  # so `import daily` + reference.png resolve
 sys.path.insert(0, str(REPO))
 
-from PIL import Image                            # noqa: E402
+from PIL import Image, ImageDraw, ImageFont      # noqa: E402
 import daily                                     # noqa: E402
 import changelog                                  # noqa: E402
 
@@ -38,8 +39,9 @@ US = "\x1f"
 MARKER_START = "<!-- release-fractal:start -->"  # paired markers -> block is strippable
 MARKER_END = "<!-- release-fractal:end -->"      # anywhere in the notes, not just the tail
 RENDER_PX = 880                                  # ~3.6x the 240px display -> crisp on retina
-DISPLAY_PX = 240                                 # small: notes text flows beside the float
+DISPLAY_PX = 480                                 # hero block: the branded card leads the notes
 WEBP_QUALITY = 82                                # ~150 KB for this art; ~12x smaller than PNG
+FONT_DIR = REPO / "fonts"                        # bundled house fonts (OFL/Apache)
 
 
 def git(*args):
@@ -106,26 +108,79 @@ def derive_params(sig):
     )
 
 
+def _font(name, size):
+    try:
+        return ImageFont.truetype(str(FONT_DIR / name), size)
+    except OSError:
+        return ImageFont.load_default(size)          # local dev without the bundled TTFs
+
+
+def _repo_color(repo):
+    """Deterministic pill fill from the repo name — constant across a repo's releases."""
+    h = int(hashlib.sha256(repo.encode()).hexdigest(), 16)
+    r, g, b = colorsys.hsv_to_rgb((h % 360) / 360.0, 0.60, 0.96)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def brand_chip(img, repo, version=""):
+    """Bottom-left identity lockup: initial pill / repo name / version, centered over a dark
+    scrim. Short name only — the feed card and release page already carry owner/repo. The
+    scrim guarantees legibility; the mark is baked into pixels so it survives a screenshot.
+    See plans/INTERACTIVE_RELEASE_REPORT."""
+    im = img.convert("RGBA")
+    W, H = im.size
+    s = 1.5 * W / 880                                # sized for the feed's large render
+    pad, cd, lg = int(20 * s), int(72 * s), int(10 * s)
+    short = repo.split("/")[-1]
+    f_name = _font("SpaceGrotesk-Bold.ttf", int(34 * s))
+    f_ver = _font("JetBrainsMono-Regular.ttf", int(24 * s))
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    nb = d.textbbox((0, 0), short, font=f_name); nh = nb[3] - nb[1]
+    nw = d.textlength(short, font=f_name)
+    vw = vh = 0
+    if version:
+        vb = d.textbbox((0, 0), version, font=f_ver); vh = vb[3] - vb[1]
+        vw = d.textlength(version, font=f_ver)
+    bw = int(max(cd, nw, vw) + 2 * pad)
+    bh = int(cd + lg * 2 + nh + (lg + vh if version else 0) + 2 * pad)
+    m = int(24 * s)
+    x0, y0 = m, H - m - bh
+    cxb = x0 + bw / 2
+    d.rounded_rectangle([x0, y0, x0 + bw, y0 + bh], radius=int(24 * s), fill=(10, 10, 14, 180))
+    cy = y0 + pad
+    d.ellipse([cxb - cd / 2, cy, cxb + cd / 2, cy + cd], fill=_repo_color(repo) + (255,))
+    initial = (short[:1] or "?").upper()
+    f_in = _font("SpaceGrotesk-Bold.ttf", int(cd * 0.55))
+    ib = d.textbbox((0, 0), initial, font=f_in)
+    d.text((cxb - (ib[2] - ib[0]) / 2 - ib[0], cy + cd / 2 - (ib[3] - ib[1]) / 2 - ib[1]),
+           initial, font=f_in, fill=(255, 255, 255, 255))
+    ty = cy + cd + lg * 2
+    d.text((cxb - nw / 2, ty - nb[1]), short, font=f_name, fill=(255, 255, 255, 255))
+    if version:
+        ty += nh + lg
+        d.text((cxb - vw / 2, ty - vb[1]), version, font=f_ver, fill=(215, 215, 230, 255))
+    return Image.alpha_composite(im, ov).convert("RGB")
+
+
 def comment_md(sig, image_url, changelog=None):
-    # Image floats left (align= is GitHub-allowed; style= is stripped) so the heading, stats,
-    # and whatever follows fill the row beside it. Leading with the image lifts it above the
-    # feed card's "Read more" fold.
+    # Hero block: the branded card leads the notes (also lifts it above the feed card's
+    # "Read more" fold), with the fingerprint + changelog full-width below. The repo/version
+    # live in the baked-in chip; the heading carries the commit range the chip omits.
     head = f"""{MARKER_START}
-<img align="left" width="{DISPLAY_PX}" height="{DISPLAY_PX}" src="{image_url}" alt="release fractal" />
+<img width="{DISPLAY_PX}" height="{DISPLAY_PX}" src="{image_url}" alt="release fractal" />
 
 ### 🌀 Release fingerprint — {sig['label']}
 
 *{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
 +{sig['insertions']}/-{sig['deletions']} across {sig['files']} files · {sig['span']}*
 """
-    # keep mode: end the block early so the host's own notes flow beside the float.
+    # keep mode: end the block early so the host's own notes follow below.
     if not changelog:
         return head + f"{MARKER_END}\n"
-    # generate mode: our changelog, then clear the float and close with the attribution.
+    # generate mode: our changelog, then close with the attribution.
     return head + f"""
 {changelog}
-
-<br clear="all" />
 
 ---
 <sub>🎨 Generated from this change's commit signal — every release looks different.</sub>
@@ -165,6 +220,8 @@ def main():
     ap.add_argument("--cache", default="", help="path to the classification cache JSON")
     ap.add_argument("--no-changelog", action="store_true",
                     help="keep mode: image + fingerprint only, so the host's own notes stand")
+    ap.add_argument("--brand", default="",
+                    help="owner/repo for the branding chip baked into the image; empty = none")
     a = ap.parse_args()
 
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
@@ -195,8 +252,10 @@ def main():
                                 n_candidates=a.candidates, scorer=daily.Scorer("heuristic"),
                                 decorated=p["decorated"])
     image_path = out / image_name
-    img.resize((RENDER_PX, RENDER_PX), Image.LANCZOS).save(
-        image_path, "WEBP", quality=WEBP_QUALITY, method=6)
+    big = img.resize((RENDER_PX, RENDER_PX), Image.LANCZOS)
+    if a.brand:
+        big = brand_chip(big, a.brand)     # repo-constant mark; version lives in feed/notes
+    big.save(image_path, "WEBP", quality=WEBP_QUALITY, method=6)
     log = None
     if not a.no_changelog:
         classifier = changelog.Classifier(model=a.model or None, cache_path=a.cache or None)
