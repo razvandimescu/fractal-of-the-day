@@ -57,7 +57,7 @@ def _key(subject):
 class Classifier:
     """`classify(subjects) -> [category]`. Conventional commits resolve for free; the rest
     hit the cache, then the LLM (if configured). `backend` is an injectable
-    `callable(list[str]) -> list[str]` used for tests in place of Ollama."""
+    `callable(str) -> str` used for tests in place of Ollama."""
 
     def __init__(self, model=None, cache_path=None, backend=None,
                  ollama_url="http://localhost:11434"):
@@ -73,63 +73,64 @@ class Classifier:
                 pass                                     # empty/corrupt cache -> start fresh
 
     def classify(self, subjects):
+        """conventional prefix -> confident verb heuristic -> LLM only for the ambiguous
+        residue (one call per subject, cached). The LLM never sees what the first two tiers
+        already resolve, so most commits cost nothing and messy subjects can't miscount."""
         out = [None] * len(subjects)
-        misses = []
+        dirty = False
         for i, s in enumerate(subjects):
             t = conventional_type(s)
             if t:
                 out[i] = t
-            elif _key(s) in self.cache:
+                continue
+            h = heuristic_type(s)
+            if h != "other":                             # confident verb match -> free
+                out[i] = h
+                continue
+            if _key(s) in self.cache:
                 out[i] = self.cache[_key(s)]
+                continue
+            lab = self._llm_one(s)                       # ambiguous -> LLM (if available)
+            if lab:
+                out[i] = self.cache[_key(s)] = lab
+                dirty = True
             else:
-                misses.append((i, s))
-
-        if misses:
-            labels = None
-            if self.model or self.backend:
-                try:
-                    labels = self._run_llm([s for _, s in misses])
-                except Exception as e:                       # unreachable model -> heuristic
-                    print(f"  [classifier] LLM unavailable ({e}); falling back to heuristic")
-            if labels:
-                for (i, s), lab in zip(misses, labels):
-                    out[i] = lab if lab in CATEGORIES else heuristic_type(s)
-                    self.cache[_key(s)] = out[i]             # cache only real LLM results
-                self._save()
-            else:
-                for i, s in misses:                          # deterministic floor, not cached
-                    out[i] = heuristic_type(s)
+                out[i] = "other"
+        if dirty:
+            self._save()
         return out
 
-    def _run_llm(self, subjects):
-        labels = (self.backend or self._ollama)(subjects)
-        if len(labels) != len(subjects):
-            raise ValueError(f"expected {len(subjects)} labels, got {len(labels)}")
-        return labels
+    def _llm_one(self, subject):
+        if not (self.model or self.backend):
+            return None
+        try:
+            lab = (self.backend or self._ollama)(subject)
+        except Exception as e:                           # unreachable model -> leave as other
+            print(f"  [classifier] LLM unavailable ({e})")
+            return None
+        return lab if lab in CATEGORIES else None
 
-    def _ollama(self, subjects):
-        numbered = "\n".join(f"{i}: {s}" for i, s in enumerate(subjects))
-        schema = {"type": "object", "required": ["labels"], "properties": {
-            "labels": {"type": "array", "items": {"type": "string", "enum": CATEGORIES}}}}
+    def _ollama(self, subject):
+        schema = {"type": "object", "required": ["label"], "properties": {
+            "label": {"type": "string", "enum": CATEGORIES}}}
         body = json.dumps({
             "model": self.model,
             "stream": False,
-            "format": schema,                            # grammar-constrained to the enum
+            "format": schema,                            # grammar-constrained: exactly one enum
             "options": {"temperature": 0},
             "messages": [
                 {"role": "system", "content":
-                 "You label git commit messages by type. Reply ONLY with JSON "
-                 '{"labels": [...]} — one label per numbered line, in order. Each label is '
-                 f"exactly one of: {', '.join(CATEGORIES)}. Examples: 'Add X'->feat, "
-                 "'Bump deps'->chore, 'Speed up Y'->perf, 'Fix crash'->fix."},
-                {"role": "user", "content": numbered},
+                 "Classify the git commit message into exactly one category. Reply ONLY with "
+                 f'JSON {{"label": ...}} where label is one of: {", ".join(CATEGORIES)}. '
+                 "Examples: 'Add X'->feat, 'Bump deps'->chore, 'Speed up Y'->perf, 'Fix crash'->fix."},
+                {"role": "user", "content": subject},
             ],
         }).encode()
         req = urllib.request.Request(f"{self.ollama_url}/api/chat", body,
                                      {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=120) as r:
             content = json.loads(r.read())["message"]["content"]
-        return json.loads(content)["labels"]
+        return json.loads(content)["label"]
 
     def _save(self):
         if self.cache_path:
