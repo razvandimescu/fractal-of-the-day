@@ -35,9 +35,10 @@ import changelog                                  # noqa: E402
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 US = "\x1f"
-MARKER = "<!-- release-fractal -->"
-RENDER_PX = 880                                  # 2x the 440px display -> crisp on retina
-DISPLAY_PX = 440
+MARKER_START = "<!-- release-fractal:start -->"  # paired markers -> block is strippable
+MARKER_END = "<!-- release-fractal:end -->"      # anywhere in the notes, not just the tail
+RENDER_PX = 880                                  # ~3.6x the 240px display -> crisp on retina
+DISPLAY_PX = 240                                 # small: notes text flows beside the float
 WEBP_QUALITY = 82                                # ~150 KB for this art; ~12x smaller than PNG
 
 
@@ -106,27 +107,35 @@ def derive_params(sig):
 
 
 def comment_md(sig, image_url, changelog):
-    return f"""{MARKER}
-## 🌀 Release fingerprint — {sig['label']}
+    # Image floats left (align= is GitHub-allowed; style= is stripped) so the heading, stats,
+    # and changelog fill the row beside it. Leading with the image lifts it above the feed
+    # card's "Read more" fold. Real releases have enough changelog to clear the float; the
+    # <br clear> is belt-and-suspenders for near-empty ranges.
+    return f"""{MARKER_START}
+<img align="left" width="{DISPLAY_PX}" height="{DISPLAY_PX}" src="{image_url}" alt="release fractal" />
 
-<img src="{image_url}" width="{DISPLAY_PX}" height="{DISPLAY_PX}" alt="release fractal" />
+### 🌀 Release fingerprint — {sig['label']}
 
-> *{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
+*{sig['n_commits']} commits · {sig['n_authors']} contributor(s) · \
 +{sig['insertions']}/-{sig['deletions']} across {sig['files']} files · {sig['span']}*
 
 {changelog}
 
+<br clear="all" />
+
 ---
 <sub>🎨 Generated from this change's commit signal — every release looks different.</sub>
+{MARKER_END}
 """
 
 
 def waitlist_md(waitlist_url):
-    return f"""{MARKER}
+    return f"""{MARKER_START}
 ## 🌀 Release fractal
 
 Release fractals are currently **free for public repositories**. Private-repo support is
 on the way — **[join the waitlist →]({waitlist_url})**.
+{MARKER_END}
 """
 
 
@@ -163,7 +172,7 @@ def main():
 
     sig = gather(a.base, a.head, a.since, a.max)
     if not sig["commits"]:
-        comment_path.write_text(f"{MARKER}\n_No commits to summarize._\n")
+        comment_path.write_text(f"{MARKER_START}\n_No commits to summarize._\n{MARKER_END}\n")
         set_output(skipped="true", comment_path=str(comment_path))
         print("no commits in range")
         return
